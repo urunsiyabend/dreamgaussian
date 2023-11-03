@@ -14,6 +14,7 @@ omegaconf
 torch
 einops
 plyfile
+pygltflib
 
 # for gui
 dearpygui
@@ -31,3 +32,6 @@ PyMCubes
 pymeshlab
 
 rembg[gpu,cli]
+
+# gradio demo
+gradio
