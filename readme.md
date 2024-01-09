@@ -8,7 +8,9 @@ https://github.com/dreamgaussian/dreamgaussian/assets/25863658/db860801-7b9c-4b3
 
 ### News
 
-- 2023.10.21: add experimental support for [MVDream](https://github.com/bytedance/MVDream).
+- 2023.12.22: add experimental support for [ImageDream](https://github.com/bytedance/ImageDream), check [imagedream.yaml](./configs/image_sai.yaml).
+- 2023.12.14: add support for [Stable-Zero123](https://stability.ai/news/stable-zero123-3d-generation), check [image_sai.yaml](./configs/image_sai.yaml).
+- 2023.10.21: add support for [MVDream](https://github.com/bytedance/MVDream), check [text_mv.yaml](./configs/text_mv.yaml).
 
 ### [Colab demo](https://github.com/camenduru/dreamgaussian-colab)
 
@@ -37,6 +39,12 @@ pip install git+https://github.com/NVlabs/nvdiffrast/
 
 # kiuikit
 pip install git+https://github.com/ashawkey/kiuikit
+
+# To use MVdream, also install:
+pip install git+https://github.com/bytedance/MVDream
+
+# To use ImageDream, also install:
+pip install git+https://github.com/bytedance/ImageDream/#subdirectory=extern/ImageDream
 ```
 
 Tested on:
@@ -87,19 +95,30 @@ python main2.py --config configs/image.yaml input=data/name_rgba.png save_path=n
 
 ### visualization
 # gui for visualizing mesh
-python -m kiui.render logs/name.obj
+# `kire` is short for `python -m kiui.render`
+kire logs/name.obj
 
 # save 360 degree video of mesh (can run without gui)
-python -m kiui.render logs/name.obj --save_video name.mp4 --wogui
+kire logs/name.obj --save_video name.mp4 --wogui
 
 # save 8 view images of mesh (can run without gui)
-python -m kiui.render logs/name.obj --save images/name/ --wogui
+kire logs/name.obj --save images/name/ --wogui
 
 ### evaluation of CLIP-similarity
 python -m kiui.cli.clip_sim data/name_rgba.png logs/name.obj
 ```
 
 Please check `./configs/image.yaml` for more options.
+
+Image-to-3D (stable-zero123):
+
+```bash
+### training gaussian stage
+python main.py --config configs/image_sai.yaml input=data/name_rgba.png save_path=name
+
+### training mesh stage
+python main2.py --config configs/image_sai.yaml input=data/name_rgba.png save_path=name
+```
 
 Text-to-3D:
 
@@ -125,6 +144,16 @@ python main2.py --config configs/text_mv.yaml prompt="a plush toy of a corgi nur
 
 Please check `./configs/text_mv.yaml` for more options.
 
+Image+Text-to-3D (ImageDream):
+
+```bash
+### training gaussian stage
+python main.py --config configs/imagedream.yaml input=data/ghost_rgba.png prompt="a ghost eating hamburger" save_path=ghost
+
+### training mesh stage
+python main2.py --config configs/imagedream.yaml input=data/ghost_rgba.png prompt="a ghost eating hamburger" save_path=ghost
+```
+
 Helper scripts:
 
 ```bash
@@ -142,6 +171,32 @@ Gradio Demo:
 
 ```bash
 python gradio_app.py
+```
+
+## Tips
+* The world & camera coordinate system is the same as OpenGL:
+```
+    World            Camera        
+  
+     +y              up  target                                              
+     |               |  /                                            
+     |               | /                                                
+     |______+x       |/______right                                      
+    /                /         
+   /                /          
+  /                /           
+ +z               forward           
+
+elevation: in (-90, 90), from +y to -y is (-90, 90)
+azimuth: in (-180, 180), from +z to +x is (0, 90)
+```
+
+* Trouble shooting OpenGL errors (e.g., `[F glutil.cpp:338] eglInitialize() failed`): 
+```bash
+# either try to install OpenGL correctly (usually installed with the Nvidia driver), or use force_cuda_rast:
+python main.py --config configs/image_sai.yaml input=data/name_rgba.png save_path=name force_cuda_rast=True
+
+kire mesh.obj --force_cuda_rast
 ```
 
 ## Acknowledgement

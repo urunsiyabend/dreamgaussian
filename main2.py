@@ -69,6 +69,8 @@ class GUI:
         # override prompt from cmdline
         if self.opt.prompt is not None:
             self.prompt = self.opt.prompt
+        if self.opt.negative_prompt is not None:
+            self.negative_prompt = self.opt.negative_prompt
         
         if self.gui:
             dpg.create_context()
@@ -102,7 +104,12 @@ class GUI:
         self.optimizer = torch.optim.Adam(self.renderer.get_params())
 
         # default camera
-        pose = orbit_camera(self.opt.elevation, 0, self.opt.radius)
+        if self.opt.mvdream or self.opt.imagedream:
+            # the second view is the front view for mvdream/imagedream.
+            pose = orbit_camera(self.opt.elevation, 90, self.opt.radius)
+        else:
+            pose = orbit_camera(self.opt.elevation, 0, self.opt.radius)
+
         self.fixed_cam = (pose, self.cam.perspective)
         
 
@@ -116,6 +123,11 @@ class GUI:
                 from guidance.mvdream_utils import MVDream
                 self.guidance_sd = MVDream(self.device)
                 print(f"[INFO] loaded MVDream!")
+            elif self.opt.imagedream:
+                print(f"[INFO] loading ImageDream...")
+                from guidance.imagedream_utils import ImageDream
+                self.guidance_sd = ImageDream(self.device)
+                print(f"[INFO] loaded ImageDream!")
             else:
                 print(f"[INFO] loading SD...")
                 from guidance.sd_utils import StableDiffusion
@@ -125,9 +137,11 @@ class GUI:
         if self.guidance_zero123 is None and self.enable_zero123:
             print(f"[INFO] loading zero123...")
             from guidance.zero123_utils import Zero123
-            self.guidance_zero123 = Zero123(self.device)
+            if self.opt.stable_zero123:
+                self.guidance_zero123 = Zero123(self.device, model_key='ashawkey/stable-zero123-diffusers')
+            else:
+                self.guidance_zero123 = Zero123(self.device, model_key='ashawkey/zero123-xl-diffusers')
             print(f"[INFO] loaded zero123!")
-
         # input image
         if self.input_img is not None:
             self.input_img_torch = torch.from_numpy(self.input_img).permute(2, 0, 1).unsqueeze(0).to(self.device)
@@ -141,7 +155,10 @@ class GUI:
         with torch.no_grad():
 
             if self.enable_sd:
-                self.guidance_sd.get_text_embeds([self.prompt], [self.negative_prompt])
+                if self.opt.imagedream:
+                    self.guidance_sd.get_image_text_embeds(self.input_img_torch, [self.prompt], [self.negative_prompt])
+                else:
+                    self.guidance_sd.get_text_embeds([self.prompt], [self.negative_prompt])
 
             if self.enable_zero123:
                 self.guidance_zero123.get_img_embeds(self.input_img_torch)
@@ -160,7 +177,7 @@ class GUI:
             loss = 0
 
             ### known view
-            if self.input_img_torch is not None:
+            if self.input_img_torch is not None and not self.opt.imagedream:
 
                 ssaa = min(2.0, max(0.125, 2 * np.random.random()))
                 out = self.renderer.render(*self.fixed_cam, self.opt.ref_size, self.opt.ref_size, ssaa=ssaa)
@@ -175,9 +192,9 @@ class GUI:
             images = []
             poses = []
             vers, hors, radii = [], [], []
-            # avoid too large elevation (> 80 or < -80), and make sure it always cover [-30, 30]
-            min_ver = max(min(-30, -30 - self.opt.elevation), -80 - self.opt.elevation)
-            max_ver = min(max(30, 30 - self.opt.elevation), 80 - self.opt.elevation)
+            # avoid too large elevation (> 80 or < -80), and make sure it always cover [min_ver, max_ver]
+            min_ver = max(min(self.opt.min_ver, self.opt.min_ver - self.opt.elevation), -80 - self.opt.elevation)
+            max_ver = min(max(self.opt.max_ver, self.opt.max_ver - self.opt.elevation), 80 - self.opt.elevation)
             for _ in range(self.opt.batch_size):
 
                 # render random view
@@ -202,7 +219,7 @@ class GUI:
                 images.append(image)
 
                 # enable mvdream training
-                if self.opt.mvdream:
+                if self.opt.mvdream or self.opt.imagedream:
                     for view_i in range(1, 4):
                         pose_i = orbit_camera(self.opt.elevation + ver, hor + 90 * view_i, self.opt.radius + radius)
                         poses.append(pose_i)
@@ -220,9 +237,9 @@ class GUI:
             # kiui.vis.plot_image(image)
 
             # guidance loss
-            strength = step_ratio * 0.45 + 0.5 # from 0.5 to 0.95
+            strength = step_ratio * 0.15 + 0.8
             if self.enable_sd:
-                if self.opt.mvdream:
+                if self.opt.mvdream or self.opt.imagedream:
                     # loss = loss + self.opt.lambda_sd * self.guidance_sd.train_step(images, poses, step_ratio)
                     refined_images = self.guidance_sd.refine(images, poses, strength=strength).float()
                     refined_images = F.interpolate(refined_images, (render_resolution, render_resolution), mode="bilinear", align_corners=False)
@@ -235,7 +252,7 @@ class GUI:
 
             if self.enable_zero123:
                 # loss = loss + self.opt.lambda_zero123 * self.guidance_zero123.train_step(images, vers, hors, radii, step_ratio)
-                refined_images = self.guidance_zero123.refine(images, vers, hors, radii, strength=strength).float()
+                refined_images = self.guidance_zero123.refine(images, vers, hors, radii, strength=strength, default_elevation=self.opt.elevation).float()
                 refined_images = F.interpolate(refined_images, (render_resolution, render_resolution), mode="bilinear", align_corners=False)
                 loss = loss + self.opt.lambda_zero123 * F.mse_loss(images, refined_images)
                 # loss = loss + self.opt.lambda_zero123 * self.lpips_loss(images, refined_images)

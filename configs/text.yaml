@@ -3,6 +3,7 @@
 input: 
 # input text prompt (default to None, can be input in GUI too)
 prompt:
+negative_prompt:
 # input mesh for stage 2 (auto-search from stage 1 output path if None)
 mesh:
 # estimated elevation angle for input image 
@@ -18,20 +19,33 @@ mesh_format: obj
 save_path: ???
 
 ### Training
+# use mvdream instead of sd 2.1
+mvdream: False
+# use imagedream
+imagedream: False
+# use stable-zero123 instead of zero123-xl
+stable_zero123: False 
 # guidance loss weights (0 to disable)
 lambda_sd: 1
-mvdream: False
 lambda_zero123: 0
+# warmup rgb supervision for image-to-3d
+warmup_rgb_loss: True
 # training batch size per iter
 batch_size: 1
 # training iterations for stage 1
-iters: 300
+iters: 500
+# whether to linearly anneal timestep
+anneal_timestep: True
 # training iterations for stage 2
-iters_refine: 30
+iters_refine: 50
 # training camera radius
 radius: 2.5
 # training camera fovy
 fovy: 49.1
+# training camera min elevation
+min_ver: -30
+# training camera max elevation
+max_ver: 30
 # checkpoint to load for stage 1 (should be a ply file)
 load:
 # whether allow geom training in stage 2
@@ -57,7 +71,7 @@ feature_lr: 0.01
 opacity_lr: 0.05
 scaling_lr: 0.005
 rotation_lr: 0.005
-percent_dense: 0.1
+percent_dense: 0.01
 density_start_iter: 0
 density_end_iter: 3000
 densification_interval: 50
